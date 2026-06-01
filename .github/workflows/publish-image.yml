@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - 'scripts/ClaudeReview/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build and push image from"
+        required: false
+        default: "main"
 
 jobs:
   publish:
