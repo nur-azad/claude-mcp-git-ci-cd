@@ -30,7 +30,7 @@ public class OllamaClient
     //   qwen2.5-coder:7b   — best for code tasks, fast on most machines
     //   llama3.2            — good general purpose, smaller download
     //   codellama           — Meta's code-focused model
-    public const string DefaultModel = "qwen2.5-coder:7b";
+    public const string DefaultModel = "qwen3.5:0.8b";
 
     private readonly string _model;
     private readonly string _baseUrl;
