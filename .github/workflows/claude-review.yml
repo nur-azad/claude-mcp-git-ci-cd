@@ -7,31 +7,44 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  # ── Dry-run job: no API key needed, tests the full pipeline flow ──────────
+  # ── Runs on every push AND every PR — just verifies the project builds ────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
+
+  # ── Dry-run review — only on PRs, no API key needed ──────────────────────
   claude-review-dry-run:
     runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
     permissions:
       pull-requests: write
       contents: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
       - name: Generate diff
         run: git diff origin/${{ github.base_ref }}...HEAD > diff.txt
 
-      - name: Restore & build
+      - name: Build
         run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
 
-      - name: Run Claude review (dry run — no API key required)
+      - name: Run Claude review (dry run)
         env:
           DRY_RUN:   "true"
           GH_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
@@ -40,28 +53,28 @@ jobs:
           DIFF_PATH: "diff.txt"
         run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
 
-  # ── Real job: needs ANTHROPIC_API_KEY secret set in repo settings ─────────
+  # ── Real Claude review — only on PRs, requires ANTHROPIC_API_KEY secret ──
   claude-review:
     runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
     permissions:
       pull-requests: write
       contents: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
       - name: Generate diff
         run: git diff origin/${{ github.base_ref }}...HEAD > diff.txt
 
-      - name: Restore & build
+      - name: Build
         run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
 
       - name: Run Claude review (Pattern A)
@@ -91,4 +104,4 @@ jobs:
         if: env.ANTHROPIC_API_KEY == ''
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: echo "ANTHROPIC_API_KEY secret not set — skipping real Claude review. Add it in repo Settings > Secrets > Actions."
+        run: echo "ANTHROPIC_API_KEY not set — skipping real Claude review. Add it in repo Settings > Secrets > Actions."
