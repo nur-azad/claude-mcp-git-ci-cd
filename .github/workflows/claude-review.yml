@@ -25,11 +25,15 @@ on:
         required: false
 
 jobs:
-  # ── Runs on every trigger — verifies the project builds ──────────────────
+  # ── Verifies the platform C# project builds ──────────────────────────────
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout platform repo (C# tool lives here)
+        uses: actions/checkout@v4
+        with:
+          repository: nur-azad/claude-mcp-git-ci-cd
+          ref: main
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -39,7 +43,6 @@ jobs:
         run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
 
   # ── Dry-run review — no API key needed ───────────────────────────────────
-  # Runs on: pull_request always | workflow_call when dry_run=true
   claude-review-dry-run:
     runs-on: ubuntu-latest
     needs: build
@@ -49,9 +52,18 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout caller repo (for diff)
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: caller
+
+      - name: Checkout platform repo (for C# tool)
+        uses: actions/checkout@v4
+        with:
+          repository: nur-azad/claude-mcp-git-ci-cd
+          ref: main
+          path: platform
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -60,13 +72,13 @@ jobs:
       - name: Generate diff
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+            cd caller && git diff origin/${{ github.base_ref }}...HEAD > ../diff.txt
           else
             echo "dry-run placeholder" > diff.txt
           fi
 
       - name: Build
-        run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
+        run: dotnet build platform/scripts/ClaudeReview/ClaudeReview.csproj -c Release
 
       - name: Run Claude review (dry run)
         env:
@@ -75,10 +87,9 @@ jobs:
           REPO:      ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           DIFF_PATH: "diff.txt"
-        run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
+        run: dotnet run --project platform/scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
 
   # ── Real Claude review — requires ANTHROPIC_API_KEY ──────────────────────
-  # Runs on: pull_request always | workflow_call when dry_run=false
   claude-review:
     runs-on: ubuntu-latest
     needs: build
@@ -88,9 +99,18 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout caller repo (for diff)
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: caller
+
+      - name: Checkout platform repo (for C# tool)
+        uses: actions/checkout@v4
+        with:
+          repository: nur-azad/claude-mcp-git-ci-cd
+          ref: main
+          path: platform
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -99,13 +119,13 @@ jobs:
       - name: Generate diff
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+            cd caller && git diff origin/${{ github.base_ref }}...HEAD > ../diff.txt
           else
-            git diff HEAD~1 HEAD > diff.txt
+            cd caller && git diff HEAD~1 HEAD > ../diff.txt
           fi
 
       - name: Build
-        run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
+        run: dotnet build platform/scripts/ClaudeReview/ClaudeReview.csproj -c Release
 
       - name: Run Claude review (Pattern A)
         if: inputs.use_tools != true && env.USE_TOOLS != 'true' && env.ANTHROPIC_API_KEY != ''
@@ -116,7 +136,7 @@ jobs:
           PR_NUMBER:         ${{ github.event.pull_request.number }}
           MIN_QUALITY_SCORE: ${{ inputs.min_quality_score || 70 }}
           DIFF_PATH:         "diff.txt"
-        run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
+        run: dotnet run --project platform/scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
 
       - name: Run Claude review (Pattern B — tool use)
         if: (inputs.use_tools == true || env.USE_TOOLS == 'true') && env.ANTHROPIC_API_KEY != ''
@@ -128,7 +148,7 @@ jobs:
           MIN_QUALITY_SCORE: ${{ inputs.min_quality_score || 70 }}
           DIFF_PATH:         "diff.txt"
           USE_TOOLS:         "true"
-        run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
+        run: dotnet run --project platform/scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
 
       - name: Skip notice (no API key configured)
         if: env.ANTHROPIC_API_KEY == ''
