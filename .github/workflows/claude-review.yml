@@ -24,9 +24,6 @@ on:
         description: "Anthropic API key — not needed when dry_run is true"
         required: false
 
-env:
-  PLATFORM_REPO: nur-azad/claude-mcp-git-ci-cd
-
 jobs:
   # ── Verifies the platform C# project builds ──────────────────────────────
   build:
