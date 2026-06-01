@@ -1,0 +1,87 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  # ── Dry-run job: no API key needed, tests the full pipeline flow ──────────
+  claude-review-dry-run:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Generate diff
+        run: git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+
+      - name: Restore & build
+        run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
+
+      - name: Run Claude review (dry run — no API key required)
+        env:
+          DRY_RUN:   "true"
+          GH_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
+          REPO:      ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DIFF_PATH: "diff.txt"
+        run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
+
+  # ── Real job: needs ANTHROPIC_API_KEY secret set in repo settings ─────────
+  claude-review:
+    runs-on: ubuntu-latest
+    if: secrets.ANTHROPIC_API_KEY != ''   # skip if secret not configured yet
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Generate diff
+        run: git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+
+      - name: Restore & build
+        run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
+
+      - name: Run Claude review (Pattern A)
+        if: env.USE_TOOLS != 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
+          REPO:              ${{ github.repository }}
+          PR_NUMBER:         ${{ github.event.pull_request.number }}
+          MIN_QUALITY_SCORE: "70"
+          DIFF_PATH:         "diff.txt"
+        run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
+
+      - name: Run Claude review (Pattern B — tool use)
+        if: env.USE_TOOLS == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
+          REPO:              ${{ github.repository }}
+          PR_NUMBER:         ${{ github.event.pull_request.number }}
+          MIN_QUALITY_SCORE: "70"
+          DIFF_PATH:         "diff.txt"
+          USE_TOOLS:         "true"
+        run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
