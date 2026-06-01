@@ -41,7 +41,6 @@ jobs:
   # ── Real job: needs ANTHROPIC_API_KEY secret set in repo settings ─────────
   claude-review:
     runs-on: ubuntu-latest
-    if: secrets.ANTHROPIC_API_KEY != ''   # skip if secret not configured yet
     permissions:
       pull-requests: write
       contents: read
@@ -64,7 +63,7 @@ jobs:
         run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
 
       - name: Run Claude review (Pattern A)
-        if: env.USE_TOOLS != 'true'
+        if: env.USE_TOOLS != 'true' && env.ANTHROPIC_API_KEY != ''
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +74,7 @@ jobs:
         run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
 
       - name: Run Claude review (Pattern B — tool use)
-        if: env.USE_TOOLS == 'true'
+        if: env.USE_TOOLS == 'true' && env.ANTHROPIC_API_KEY != ''
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
@@ -85,3 +84,9 @@ jobs:
           DIFF_PATH:         "diff.txt"
           USE_TOOLS:         "true"
         run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
+
+      - name: Skip notice (no API key configured)
+        if: env.ANTHROPIC_API_KEY == ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: echo "ANTHROPIC_API_KEY secret not set — skipping real Claude review. Add it in repo Settings > Secrets > Actions."
