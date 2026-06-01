@@ -86,3 +86,4 @@ Console.WriteLine("Quality gate passed.");
 static string Required(string name) =>
     Environment.GetEnvironmentVariable(name)
     ?? throw new InvalidOperationException($"Required environment variable not set: {name}");
+
