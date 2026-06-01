@@ -15,13 +15,17 @@ on:
         description: "Use Pattern B agentic review with file reading"
         type: boolean
         default: false
+      dry_run:
+        description: "Return a mock response — no API key required, good for testing"
+        type: boolean
+        default: false
     secrets:
       ANTHROPIC_API_KEY:
-        description: "Anthropic API key — omit to run in dry-run mode"
+        description: "Anthropic API key — not needed when dry_run is true"
         required: false
 
 jobs:
-  # ── Runs on every push AND every PR — just verifies the project builds ────
+  # ── Runs on every trigger — verifies the project builds ──────────────────
   build:
     runs-on: ubuntu-latest
     steps:
@@ -34,11 +38,12 @@ jobs:
       - name: Build
         run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
 
-  # ── Dry-run review — only on PRs, no API key needed ──────────────────────
+  # ── Dry-run review — no API key needed ───────────────────────────────────
+  # Runs on: pull_request always | workflow_call when dry_run=true
   claude-review-dry-run:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.dry_run == true
     permissions:
       pull-requests: write
       contents: read
@@ -53,7 +58,17 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Generate diff
-        run: git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+          else
+            # workflow_call dry-run: diff content doesn't matter, response is mocked
+            echo "--- a/example.cs
++++ b/example.cs
+@@ -1,3 +1,4 @@
++// dry-run test change
+ public class Example { }" > diff.txt
+          fi
 
       - name: Build
         run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
@@ -67,11 +82,12 @@ jobs:
           DIFF_PATH: "diff.txt"
         run: dotnet run --project scripts/ClaudeReview/ClaudeReview.csproj -c Release --no-build
 
-  # ── Real Claude review — only on PRs, requires ANTHROPIC_API_KEY secret ──
+  # ── Real Claude review — requires ANTHROPIC_API_KEY ──────────────────────
+  # Runs on: pull_request always | workflow_call when dry_run=false
   claude-review:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_call' && inputs.dry_run != true)
     permissions:
       pull-requests: write
       contents: read
@@ -86,7 +102,12 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Generate diff
-        run: git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+          else
+            git diff HEAD~1 HEAD > diff.txt
+          fi
 
       - name: Build
         run: dotnet build scripts/ClaudeReview/ClaudeReview.csproj -c Release
